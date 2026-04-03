@@ -1,139 +1,90 @@
--- 🤫 SILENT AIM WALLBANG + AUTO REJOIN SI NADIE SE MUEVE (muertes cuentan como actividad)
-
+--------------------------------------------------
+-- SERVICES
+--------------------------------------------------
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Players.LocalPlayer
-local PlaceId = game.PlaceId
-
 local remote = ReplicatedStorage
-    :WaitForChild("SystemResources")
-    :WaitForChild("BufferCache")
-    :WaitForChild("RequestActionSync")
+	:WaitForChild("SystemResources")
+	:WaitForChild("BufferCache")
+	:WaitForChild("RequestActionSync")
 
-getgenv().SILENT_AIM = true
-
-local MOVE_DISTANCE = 5 -- studs mínimos
-local CHECK_TIME = 10 -- segundos
-
-local function getCharacter(plr)
-    return plr.Character or plr.CharacterAdded:Wait()
+local function getCharacter()
+	return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
 
 local function getRoot(char)
-    return char and char:FindFirstChild("HumanoidRootPart")
+	return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- 🔥 jugador más cercano sin importar paredes
+--------------------------------------------------
+-- MÁS CERCANO (SOLO CON TOOL EQUIPADA)
+--------------------------------------------------
 local function getClosestPlayer()
-    local myChar = getCharacter(LocalPlayer)
-    local myRoot = getRoot(myChar)
-    if not myRoot then return nil end
+	local myChar = getCharacter()
+	local myRoot = getRoot(myChar)
+	if not myRoot then return nil end
 
-    local closest = nil
-    local shortest = math.huge
+	local closest = nil
+	local shortest = math.huge
 
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character then
-            local hum = plr.Character:FindFirstChild("Humanoid")
-            local head = plr.Character:FindFirstChild("Head")
-            local root = getRoot(plr.Character)
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and plr.Character then
+			local hum = plr.Character:FindFirstChild("Humanoid")
+			local head = plr.Character:FindFirstChild("Head")
+			local root = getRoot(plr.Character)
+			local tool = plr.Character:FindFirstChildOfClass("Tool")
 
-            if hum and hum.Health > 0 and head and root then
-                local dist = (root.Position - myRoot.Position).Magnitude
+			-- solo si tiene tool en la mano
+			if hum and hum.Health > 0 and head and root and tool then
+				local dist = (root.Position - myRoot.Position).Magnitude
 
-                if dist < shortest then
-                    shortest = dist
-                    closest = plr
-                end
-            end
-        end
-    end
+				if dist < shortest then
+					shortest = dist
+					closest = plr
+				end
+			end
+		end
+	end
 
-    return closest
+	return closest
 end
 
+--------------------------------------------------
+-- DISPARO
+--------------------------------------------------
 local function fireSilentShot()
-    if not getgenv().SILENT_AIM then return end
+	local myChar = getCharacter()
+	local myRoot = getRoot(myChar)
+	local target = getClosestPlayer()
 
-    local myChar = getCharacter(LocalPlayer)
-    local myRoot = getRoot(myChar)
-    local target = getClosestPlayer()
+	if not myRoot or not target then return end
 
-    if not myRoot or not target then return end
+	local head = target.Character:FindFirstChild("Head")
+	local hum = target.Character:FindFirstChild("Humanoid")
+	if not head or not hum then return end
 
-    local head = target.Character:FindFirstChild("Head")
-    local hum = target.Character:FindFirstChild("Humanoid")
-    if not head or not hum then return end
+	local origin = myRoot.Position
+	local hitPos = head.Position
+	local dir = (hitPos - origin).Unit
 
-    local origin = myRoot.Position
-    local hitPos = head.Position
-    local dir = (hitPos - origin).Unit
-
-    remote:FireServer({
-        direction = dir,
-        hitPosition = hitPos,
-        origin = origin,
-        IsHeadshot = true,
-        hitHumanoid = hum,
-        hitInstance = head
-    })
+	remote:FireServer({
+		direction = dir,
+		hitPosition = hitPos,
+		origin = origin,
+		IsHeadshot = true,
+		hitHumanoid = hum,
+		hitInstance = head
+	})
 end
 
--- 🔥 loop silent aim
+--------------------------------------------------
+-- LOOP AUTOMÁTICO (1 segundo)
+--------------------------------------------------
 task.spawn(function()
-    while true do
-        task.wait(0.6)
-        fireSilentShot()
-    end
-end)
-
--- 📍 guardar posiciones iniciales
-local lastPositions = {}
-
-local function savePositions()
-    for _, plr in pairs(Players:GetPlayers()) do
-        local char = plr.Character
-        local root = getRoot(char)
-
-        if root then
-            lastPositions[plr] = root.Position
-        end
-    end
-end
-
-savePositions()
-
--- 🔄 detector de movimiento global
-task.spawn(function()
-    while true do
-        task.wait(CHECK_TIME)
-
-        local activityDetected = false
-
-        for _, plr in pairs(Players:GetPlayers()) do
-            local char = plr.Character
-            local hum = char and char:FindFirstChild("Humanoid")
-            local root = getRoot(char)
-
-            -- si el jugador murió, contar como actividad
-            if hum and hum.Health <= 0 then
-                activityDetected = true
-            elseif root then
-                local oldPos = lastPositions[plr]
-                if oldPos then
-                    local moved = (root.Position - oldPos).Magnitude
-                    if moved >= MOVE_DISTANCE then
-                        activityDetected = true
-                    end
-                end
-                lastPositions[plr] = root.Position
-            end
-        end
-
-        if not activityDetected then
-            TeleportService:Teleport(PlaceId, LocalPlayer)
-        end
-    end
+	while true do
+		task.wait(1)
+		fireSilentShot()
+	end
 end)
